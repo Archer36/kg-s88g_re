@@ -1,0 +1,4 @@
+Channel,Name,RX_Freq,TX_Freq,RX_Tone,TX_Tone,Power,Bandwidth,Busy_Lock
+1,CH1TST,462.5625,462.5625,67.0,67.0,High,Wide,OFF
+2,CH2TST,462.5875,462.5875,100.0,D023N,Low,Narrow,ON
+3,CH3TST,467.5625,467.5625,OFF,OFF,High,Wide,OFF
