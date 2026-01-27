@@ -103,3 +103,6 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+/.claude/
+/.idea/
+/CHRIP UV9GX Saves/
