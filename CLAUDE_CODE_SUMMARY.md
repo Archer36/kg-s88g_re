@@ -7,26 +7,41 @@ Reverse engineering the Wouxun KG-S88G ham radio .dat configuration file format 
 
 ### Overall Structure
 - **File type**: Binary .dat configuration file
-- **Total size**: ~16KB (0x4148 bytes in test files)
+- **Total size**: 16712 bytes (0x4148)
+- **Channels**: 400 total
 - **Key sections**:
-  - 0x0000-0x0254: Header/settings (not yet analyzed)
-  - 0x0255-0x0434: Channel frequency data (30 channels × 16 bytes)
-  - 0x1C4B-0x1CFE: Channel names (30 channels × 6 bytes)
-  - Remainder: Additional configuration
+  - 0x0000-0x0144: Header start
+  - 0x0145-0x0154: VFO Record (16 bytes)
+  - 0x0155-0x0254: Header (Optional Features, DTMF Settings)
+  - 0x0255-0x1B54: Channel Frequency Data (400 × 16 bytes)
+  - 0x1B55-0x1C4A: Gap (0xAA padding)
+  - 0x1C4B-0x25AA: Channel Names (400 × 6 bytes)
+  - 0x25AB-0x27C4: Additional Settings
+  - 0x27C5-0x27F7: Favorites Bitmap (51 bytes)
+  - 0x27F8-0x2844: Gap
+  - 0x2845-0x28C2: CALL ID List (20 × 6 bytes)
+  - 0x28C3-0x4147: Remaining Configuration
 
 ### Channel Frequency Data (0x0255+)
 **Structure**: 16 bytes per channel, sequential
 ```
-Offset +0: RX Frequency (4 bytes)
-Offset +4: TX Frequency (4 bytes)  
-Offset +8: CTCSS/DCS tones (4 bytes) - RX and TX
-Offset +12: Other settings (4 bytes) - power, bandwidth, etc.
+Offset +0:  RX Frequency (4 bytes, nibble-encoded BCD, little-endian)
+Offset +4:  TX Frequency (4 bytes, nibble-encoded BCD, little-endian)
+Offset +8:  RX Tone Mode (1 byte, XOR 0x55)
+Offset +9:  RX Tone Index (1 byte, XOR 0x55)
+Offset +10: TX Tone Mode (1 byte, XOR 0x55)
+Offset +11: TX Tone Index (1 byte, XOR 0x55)
+Offset +12: Settings A - Power/Descramble/SP Mute (XOR 0x55)
+Offset +13: Settings B - Busy Lock/Call ID (XOR 0x55)
+Offset +14: Settings C - Bandwidth (XOR 0x55)
+Offset +15: Settings D - Reserved (XOR 0x55)
 ```
 
 ### Channel Names (0x1C4B+)
 **Structure**: 6 bytes per channel, sequential
 - Fixed 6-character limit
 - Custom character encoding (see below)
+- Padded with 0x7C (space), empty channels marked with 0xAA
 
 ## Encoding Schemes Discovered
 
@@ -47,7 +62,7 @@ U=0x4b, V=0x4a, W=0x75, X=0x74, Y=0x77, Z=0x76
 
 **Special**:
 ```
-Space=0x7c
+Space=0x7c, Hyphen=0x71, F(terminator)=0x5a, Empty=0xAA
 ```
 
 ### 2. Nibble-to-Digit Mapping (Used for Frequencies and Tones)
@@ -154,16 +169,25 @@ D251N:   57 7E → mode=0x57^0x55=2, idx=0x7E^0x55=43 → DCS-N[42]=D251
 - Full structure with decode functions
 - Shows frequencies as "XXX.YYYYY MHz"
 - Shows channel names as decoded text
-- Uses absolute offsets with `@` operator
-- **Status**: Working correctly
+- VFO Record with decoded values
+- Optional Features settings (27+ settings)
+- DTMF Settings (Sidetone, PTT-ID, ID DLY, etc.)
+- CALL ID list (20 entries)
+- Channel settings with Descramble display
+- **Status**: Complete
 
 **kg_s88g_simple.hexpat**:
 - Simplified view with color coding
-- **Status**: Updated with offset fixes
+- VFO Record section
+- CALL ID list section
+- **Status**: Complete
 
 **kg_s88g_channels.hexpat**:
 - Decoded channel-by-channel view
-- **Status**: Updated with offset fixes
+- VFO Record with decoded values
+- CALL IDs with decoded digits
+- Settings show Power/Bandwidth/Descramble
+- **Status**: Complete
 
 ## Files Provided by User
 
@@ -190,8 +214,7 @@ D251N:   57 7E → mode=0x57^0x55=2, idx=0x7E^0x55=43 → DCS-N[42]=D251
 
 ### ⚠️ MINOR ISSUES
 - DCS code list: Radio uses 105 codes vs standard 104; exact list order around index 97-105 may need fine-tuning
-- ImHex patterns may need updating to use new XOR 0x55 decoding
-- DTMF read-only fields (Kill, Stun, Monitor, Inspection, Free) location not determined
+- DTMF read-only fields (Kill, Stun, Monitor, Inspection, Free) location not determined - these are grayed out in the software
 
 ### ❌ NOT YET ANALYZED
 - **Footer section** - Remaining configuration after 0x28C3
@@ -221,22 +244,19 @@ Mixed RX/TX configurations work properly.
 ### 1. Fine-tune DCS Code List
 The radio uses 105 DCS codes instead of standard 104. Need to determine the exact extra code and its position (likely around index 97).
 
-### 2. Analyze Other Channel Settings
-Bytes 12-15 of each 16-byte channel record contain additional settings:
-- Power level (High/Low)
-- Bandwidth (Wide/Narrow)
-- Busy Lock
-- Scan Add
-- Other flags
-
-### 3. Analyze Header Section
-The header (0x0000-0x0254) likely contains:
-- Radio serial number or ID
-- Global settings (squelch level, VOX, etc.)
+### 2. Analyze Remaining Footer Section
+The area from 0x28C3 to 0x4147 (6277 bytes) has not been fully analyzed. May contain:
 - Scan list configuration
+- Additional radio settings
+- Reserved/unused space
 
-### 4. Update ImHex Patterns
-Update the .hexpat files to use the XOR 0x55 decoding method for proper tone display.
+### 3. DTMF Read-Only Fields
+Determine where Kill, Stun, Monitor, Inspection, and Free DTMF codes are stored (if at all - they may be hardcoded in firmware).
+
+### ✅ COMPLETED
+- ~~Analyze Other Channel Settings~~ - Power, Bandwidth, Descramble, SP Mute, Busy Lock, Call ID all mapped
+- ~~Analyze Header Section~~ - Optional Features, VFO, DTMF Settings all mapped
+- ~~Update ImHex Patterns~~ - All three patterns updated with complete settings
 
 ## Code Locations
 
@@ -252,22 +272,33 @@ Test files are in `Test Saves/` folder.
 
 ## Key Insights
 
-1. **XOR 0x55 encoding**: Tone bytes use XOR with 0x55, not complex character mappings
+1. **XOR 0x55 encoding**: All settings bytes use XOR with 0x55, not complex character mappings
 2. **Nibble encoding for frequencies/names**: Frequencies and channel names use nibble-to-digit mapping
 3. **Little-endian byte order**: Frequencies are stored reversed
 4. **Mode + Index**: Tones use 2 bytes - first for mode (OFF/CTCSS/DCS-N/DCS-I), second for index
 5. **1-based indexing**: Tone indices start at 1, not 0
+6. **VFO mirrors channel structure**: VFO record at 0x0145 uses identical encoding to channel records
+7. **Character encoding reuse**: CALL IDs, ID-EDIT, ID Control all use same encoding as channel names
+8. **Bit-packed settings**: Settings A byte packs Power (bit 0), Descramble (bits 2-5), SP Mute (bits 6-7)
 
 ## File Structure Summary (400 Channels)
 
 ```
 Offset      End       Size      Description
 ----------------------------------------------------------------
-0x0000      0x0254    597 B     Header/Settings
-0x0255      0x1B54    6400 B    Frequency Data (400 channels × 16 bytes)
-0x1B55      0x1C4A    246 B     [Gap - all 0xAA]
-0x1C4B      0x25AA    2400 B    Channel Names (400 channels × 6 bytes)
-0x25AB      0x4147    7069 B    Additional Settings (scan lists, etc.)
+0x0000      0x0144    325 B     Header Start
+0x0145      0x0154    16 B      VFO Record (Frequency Mode settings)
+0x0155      0x0164    16 B      Header (continued)
+0x0165      0x01B5    81 B      Optional Features & DTMF Settings
+0x01B6      0x0254    159 B     Header (continued)
+0x0255      0x1B54    6400 B    Channel Frequency Data (400 × 16 bytes)
+0x1B55      0x1C4A    246 B     Gap (filled with 0xAA)
+0x1C4B      0x25AA    2400 B    Channel Names (400 × 6 bytes)
+0x25AB      0x27C4    538 B     Additional Settings
+0x27C5      0x27F7    51 B      Favorites Bitmap
+0x27F8      0x2844    77 B      Gap
+0x2845      0x28C2    120 B     CALL ID List (20 × 6 bytes)
+0x28C3      0x4147    6277 B    Remaining Configuration (not fully analyzed)
 ----------------------------------------------------------------
 Total                 16712 B   (0x4148)
 ```
