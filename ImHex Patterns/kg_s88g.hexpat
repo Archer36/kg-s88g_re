@@ -127,7 +127,7 @@ fn format_frequency(Frequency freq) {
 // 2 bytes per tone: [MODE_BYTE][INDEX_BYTE]
 // Both bytes XORed with 0x55
 // Mode: 0=OFF, 1=CTCSS, 2=DCS-N, 3=DCS-I
-// Index: 1-based into CTCSS (1-38) or DCS (1-104) list
+// Index: 1-based into CTCSS (1-38) or DCS (1-105) list
 
 struct Tone {
     u8 mode_byte;   // XOR 0x55: 0=OFF, 1=CTCSS, 2=DCS-N, 3=DCS-I
@@ -140,7 +140,6 @@ fn format_tone(Tone t) {
 
     if (mode == 0) return "OFF";
     else if (mode == 1) {
-        // CTCSS - show index (would need lookup table for actual Hz)
         return "CTCSS #" + std::string::to_string(idx);
     }
     else if (mode == 2) {
@@ -156,7 +155,7 @@ fn format_tone(Tone t) {
 // Channel Settings Structure
 // ============================================================================
 // 4 bytes at offset +12, all XORed with 0x55
-// Byte 12: Power (bit 0), Descramble (bits 2-3), SP Mute (bits 6-7)
+// Byte 12: Power (bit 0), Descramble (bits 2-5), SP Mute (bits 6-7)
 // Byte 13: Busy Lock (bit 0), Call ID (bits 3-7)
 // Byte 14: Bandwidth (bit 0)
 // Byte 15: Reserved
@@ -175,10 +174,16 @@ fn format_settings(ChannelSettings s) {
 
     str power = (a & 0x01) ? "High" : "Low";
     str bw = (c & 0x01) ? "Wide" : "Narrow";
-    str busy = (b & 0x01) ? "BusyLock" : "";
+    str busy = (b & 0x01) ? " BusyLock" : "";
+    u8 descramble = (a >> 2) & 0x0F;
     u8 call_id = (b >> 3) & 0x1F;
 
-    return power + "/" + bw + " CallID=" + std::string::to_string(call_id);
+    str desc_str = "";
+    if (descramble > 0) {
+        desc_str = " Desc=" + std::string::to_string(descramble);
+    }
+
+    return power + "/" + bw + busy + desc_str + " CallID=" + std::string::to_string(call_id);
 };
 
 // ============================================================================
@@ -217,12 +222,100 @@ struct ChannelRecord {
 };
 
 // ============================================================================
+// VFO Record (16 bytes at 0x0145)
+// ============================================================================
+// Same structure as channel record, used for VFO/Frequency mode
+
+struct VFORecord {
+    Frequency rx_frequency [[comment("VFO RX frequency")]];
+    Frequency tx_frequency [[comment("VFO TX frequency")]];
+    Tone rx_tone [[comment("VFO RX CTCSS/DCS")]];
+    Tone tx_tone [[comment("VFO TX CTCSS/DCS")]];
+    ChannelSettings settings [[comment("VFO Power, BW, etc.")]];
+};
+
+// ============================================================================
+// Optional Features Settings
+// ============================================================================
+
+struct OptionalFeatures {
+    u8 squelch           @ 0x0165 [[comment("Squelch 0-9"), format("fmt_xor55")]];
+    u8 top_long          @ 0x0167 [[comment("TOP Long PF button 1-13"), format("fmt_xor55")]];
+    u8 beep              @ 0x0168 [[comment("Beep 0=OFF 1=ON"), format("fmt_xor55")]];
+    u8 battery_save      @ 0x0169 [[comment("Battery Save 0=OFF 1=ON"), format("fmt_xor55")]];
+    u8 voice             @ 0x016B [[comment("Voice 0=OFF 2=ON"), format("fmt_xor55")]];
+    u8 tot               @ 0x016D [[comment("TOT 0=OFF 1-60 (15s steps)"), format("fmt_xor55")]];
+    u8 top_short         @ 0x016E [[comment("TOP Short PF button 1-13"), format("fmt_xor55")]];
+    u8 pf2_long          @ 0x016F [[comment("PF2 Long PF button 1-13"), format("fmt_xor55")]];
+    u8 auto_lock         @ 0x0171 [[comment("Auto Lock 0=OFF 1-6 (10s steps)"), format("fmt_xor55")]];
+    u8 work_mode         @ 0x0172 [[comment("Work Mode 0=Freq 1=Ch/Freq 2=Ch/Num 3=Ch/Name"), format("fmt_xor55")]];
+    u8 scan_mode         @ 0x0173 [[comment("Scan Mode 0=CO 1=TO 2=SE"), format("fmt_xor55")]];
+    u8 startup_display   @ 0x0175 [[comment("Startup Display 0=Msg 1=Voltage"), format("fmt_xor55")]];
+    u8 roger             @ 0x0177 [[comment("Roger 0=OFF 1=BOT 2=EOT 3=BOTH"), format("fmt_xor55")]];
+    u8 backlight         @ 0x0179 [[comment("Backlight 0=OFF 1-30 31=ALWAYS"), format("fmt_xor55")]];
+    u8 repeater          @ 0x017A [[comment("Repeater 0=OFF 1=ON"), format("fmt_xor55")]];
+    u8 active_channel    @ 0x017B [[comment("Active Channel 1-400"), format("fmt_xor55")]];
+    u8 vox               @ 0x0181 [[comment("VOX 0=OFF 1-9"), format("fmt_xor55")]];
+    u8 overtime_alarm    @ 0x0182 [[comment("Overtime Alarm 0=OFF 1-10"), format("fmt_xor55")]];
+    u8 priority_channel  @ 0x018A [[comment("Priority Channel 1-400"), format("fmt_xor55")]];
+    u8 lock_mode         @ 0x018F [[comment("Lock Mode 0=KEY 1=KEY+PTT 2=KEY+ENC 3=KEY+ALL"), format("fmt_xor55")]];
+    u8 alert_tone        @ 0x0190 [[comment("Alert Tone 0=1000Hz 1=1450Hz 2=1750Hz 3=2100Hz"), format("fmt_xor55")]];
+    u8 vox_delay         @ 0x0191 [[comment("VOX Delay 1-5 (seconds)"), format("fmt_xor55")]];
+    u8 tone_save         @ 0x0192 [[comment("Tone Save 0=RX 1=TX 2=Both"), format("fmt_xor55")]];
+    u8 priority_scan     @ 0x0193 [[comment("Priority Scan 0=OFF 1=ON"), format("fmt_xor55")]];
+    u8 pf1_short         @ 0x0198 [[comment("PF1 Short PF button 1-13"), format("fmt_xor55")]];
+    u8 pf1_long          @ 0x0199 [[comment("PF1 Long PF button 1-13"), format("fmt_xor55")]];
+    u8 pf2_short         @ 0x019A [[comment("PF2 Short PF button 1-13"), format("fmt_xor55")]];
+    u8 scan_qt           @ 0x019B [[comment("SCAN-QT 0=OFF 1=ON"), format("fmt_xor55")]];
+    u8 startup_msg[7]    @ 0x019C [[comment("Startup Message 7 chars"), format("format_channel_name")]];
+    u8 timer_rptrct      @ 0x01B5 [[comment("Timer/RPT RCT"), format("fmt_xor55")]];
+};
+
+fn fmt_xor55(u8 val) {
+    return std::string::to_string(val ^ 0x55);
+};
+
+// ============================================================================
+// DTMF Settings
+// ============================================================================
+
+struct DTMFSettings {
+    u8 sidetone          @ 0x0184 [[comment("Sidetone 0=OFF 1=DT-ST 2=ANI-ST 3=DT+ANI"), format("fmt_xor55")]];
+    u8 ptt_id            @ 0x0185 [[comment("PTT-ID 0=OFF 1=BOT 2=EOT 3=BOTH"), format("fmt_xor55")]];
+    u8 id_dly            @ 0x018C [[comment("ID DLY (value*100=MS, 100-3000MS)"), format("fmt_xor55")]];
+    u8 ring              @ 0x018D [[comment("Ring 0=Off 1-10 seconds"), format("fmt_xor55")]];
+    u8 call_reset_time   @ 0x0194 [[comment("Call Reset Time 0-60 seconds"), format("fmt_xor55")]];
+    u8 dtmf_tx_time      @ 0x01AB [[comment("DTMF TX Time (50+value*10=MS)"), format("fmt_xor55")]];
+    u8 dtmf_interval     @ 0x01AC [[comment("DTMF Interval Time (50+value*10=MS)"), format("fmt_xor55")]];
+    u8 be_control        @ 0x01AE [[comment("Be Control 0=OFF 1=ON"), format("fmt_xor55")]];
+    u8 id_control[4]     @ 0x01A5 [[comment("ID Control (3 digits + F terminator)")]];
+    u8 id_edit[4]        @ 0x01AF [[comment("ID-EDIT (3 digits + F terminator)")]];
+};
+
+// ============================================================================
+// CALL ID Entry (6 bytes each)
+// ============================================================================
+
+struct CallIDEntry {
+    u8 digits[6];
+} [[format("format_channel_name")]];
+
+// ============================================================================
 // Main File Structure
 // ============================================================================
 
 struct KG_S88G_Config {
-    // Header section (radio settings)
-    u8 header[0x0255] @ 0x0000 [[comment("Radio settings and configuration")]];
+    // VFO Record
+    VFORecord vfo @ 0x0145 [[comment("VFO/Frequency Mode settings")]];
+
+    // Step setting for VFO
+    u8 vfo_step @ 0x0166 [[comment("VFO Step 0=2.5K..8=100K"), format("fmt_xor55")]];
+
+    // Optional Features (scattered through header)
+    OptionalFeatures optional_features @ 0x00 [[comment("Optional Features settings")]];
+
+    // DTMF Settings
+    DTMFSettings dtmf_settings @ 0x00 [[comment("DTMF signaling settings")]];
 
     // Channel frequency data: 400 channels x 16 bytes = 6400 bytes
     // Located at 0x0255 - 0x1B54
@@ -237,6 +330,10 @@ struct KG_S88G_Config {
 
     // Favorites bitmap at 0x27C5 (51 bytes for 400 channels)
     u8 favorites[51] @ 0x27C5 [[comment("Favorites bitmask")]];
+
+    // CALL ID list: 20 entries x 6 bytes
+    // Located at 0x2845
+    CallIDEntry call_ids[20] @ 0x2845 [[comment("CALL ID list (20 entries)")]];
 };
 
 // Entry point
@@ -248,5 +345,9 @@ std::print("===========================================");
 std::print("Channels: 400");
 std::print("Freq data: 0x0255-0x1B54 (16 bytes/ch)");
 std::print("Names: 0x1C4B-0x25AA (6 bytes/ch)");
-std::print("Tone encoding: XOR 0x55");
+std::print("VFO: 0x0145-0x0154");
+std::print("Optional Features: 0x0165-0x01B5");
+std::print("DTMF Settings: 0x0184-0x01B4");
+std::print("CALL IDs: 0x2845+ (20 x 6 bytes)");
+std::print("Encoding: XOR 0x55 for settings");
 std::print("===========================================");

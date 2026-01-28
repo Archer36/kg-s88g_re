@@ -9,7 +9,11 @@ The complete pattern with detailed structure definitions, including:
 - Full frequency decoding with transformation functions
 - Complete channel name character mapping
 - CTCSS/DCS tone decoding (XOR 0x55 method)
-- Channel settings (Power, Bandwidth, Busy Lock, Call ID)
+- Channel settings (Power, Bandwidth, Descramble, Busy Lock, Call ID)
+- VFO/Frequency Mode settings
+- Optional Features settings
+- DTMF Settings
+- CALL ID list (20 entries)
 - Support for all 400 channels
 
 **Best for**: Understanding the complete file format, learning the encoding scheme
@@ -18,6 +22,8 @@ The complete pattern with detailed structure definitions, including:
 A cleaner version focusing on the essential structures:
 - Channel frequency data (16 bytes per channel)
 - Channel names (6 bytes per channel)
+- VFO Record
+- CALL ID list
 - Color-coded fields (RX/TX/Settings)
 - Less verbose, easier to navigate
 
@@ -27,7 +33,9 @@ A cleaner version focusing on the essential structures:
 Shows channels with decoded values in an easy-to-read format:
 - Displays actual MHz values (e.g., "462.56250 MHz")
 - Shows decoded channel names (e.g., "GMRS01")
-- Each channel is a single collapsible item
+- Decoded settings (Power/Bandwidth/Descramble)
+- VFO Record with decoded values
+- CALL IDs with decoded digits
 
 **Best for**: Quick viewing of channel configuration
 
@@ -44,13 +52,36 @@ Shows channels with decoded values in an easy-to-read format:
 ```
 Offset      End       Size      Description
 ----------------------------------------------------------------
-0x0000      0x0254    597 B     Header/Radio Settings
+0x0000      0x0144    325 B     Header Start
+0x0145      0x0154    16 B      VFO Record (Frequency Mode settings)
+0x0155      0x0254    256 B     Header (Optional Features, DTMF Settings)
 0x0255      0x1B54    6400 B    Channel Frequency Data (400 x 16 bytes)
 0x1B55      0x1C4A    246 B     Gap (filled with 0xAA)
 0x1C4B      0x25AA    2400 B    Channel Names (400 x 6 bytes)
 0x25AB      0x27C4    537 B     Additional Settings
 0x27C5      0x27F7    51 B      Favorites Bitmap
-0x27F8      0x4147    6480 B    Remaining Configuration
+0x27F8      0x2844    77 B      Gap
+0x2845      0x28C2    120 B     CALL ID List (20 x 6 bytes)
+0x28C3      0x4147    6277 B    Remaining Configuration
+```
+
+### VFO Record (0x0145-0x0154, 16 bytes)
+Same structure as channel records, used for VFO/Frequency mode:
+```
+Offset  Size  Description
+0x0145  4     VFO RX Frequency
+0x0149  4     VFO TX Frequency
+0x014D  1     VFO RX Tone Mode
+0x014E  1     VFO RX Tone Index
+0x014F  1     VFO TX Tone Mode
+0x0150  1     VFO TX Tone Index
+0x0151  1     VFO Settings A (Power, Descramble, SP Mute)
+0x0152  1     VFO Settings B (Busy Lock, Call ID)
+0x0153  1     VFO Settings C (Bandwidth)
+0x0154  1     VFO Settings D (Reserved)
+
+0x0166  1     VFO Step (XOR 0x55: 0=2.5K, 1=5K, 2=6.25K, 3=8.33K, 4=10K, 5=12.5K, 6=25K, 7=50K, 8=100K)
+0x017A  1     Repeater (XOR 0x55: 0=OFF, 1=ON)
 ```
 
 ### Per-Channel Frequency Record (16 bytes)
@@ -62,7 +93,7 @@ Offset  Size  Description
 +9      1     RX Tone Index (XOR 0x55: 1-based index)
 +10     1     TX Tone Mode (XOR 0x55)
 +11     1     TX Tone Index (XOR 0x55)
-+12     1     Settings A (XOR 0x55): Power(bit0), Descramble(bits2-3), SP Mute(bits6-7)
++12     1     Settings A (XOR 0x55): Power(bit0), Descramble(bits2-5), SP Mute(bits6-7)
 +13     1     Settings B (XOR 0x55): Busy Lock(bit0), Call ID(bits3-7)
 +14     1     Settings C (XOR 0x55): Bandwidth(bit0: 1=Wide, 0=Narrow)
 +15     1     Settings D (XOR 0x55): Reserved
@@ -91,7 +122,7 @@ Stored:  05 37 70 13  (reversed/little-endian)
   - 1 = CTCSS
   - 2 = DCS Normal (N)
   - 3 = DCS Inverted (I)
-- **Index**: 1-based into CTCSS (1-38) or DCS (1-104) list
+- **Index**: 1-based into CTCSS (1-38) or DCS (1-105) list
 
 **Examples**:
 ```
@@ -110,6 +141,63 @@ Stored:  05 37 70 13  (reversed/little-endian)
 - Empty channels marked with `0xAA`
 
 **Example**: "GMRS01" encodes as: `45 43 4e 49 55 54`
+
+### Optional Features (Header Section)
+Key settings locations (all XOR 0x55 encoded):
+```
+0x0165  Squelch (0-9)
+0x0167  TOP Long PF button (1-13)
+0x0168  Beep (0=OFF, 1=ON)
+0x0169  Battery Save (0=OFF, 1=ON)
+0x016B  Voice (0=OFF, 2=ON)
+0x016D  TOT (0=OFF, 1-60 in 15s steps)
+0x016E  TOP Short PF button (1-13)
+0x016F  PF2 Long PF button (1-13)
+0x0171  Auto Lock (0=OFF, 1-6 in 10s steps)
+0x0172  Work Mode (0=Freq, 1=Ch/Freq, 2=Ch/Num, 3=Ch/Name)
+0x0173  Scan Mode (0=CO, 1=TO, 2=SE)
+0x0175  Startup Display (0=Msg, 1=Voltage)
+0x0177  Roger (0=OFF, 1=BOT, 2=EOT, 3=BOTH)
+0x0179  Backlight (0=OFF, 1-30, 31=ALWAYS)
+0x017B  Active Channel (1-400)
+0x0181  VOX (0=OFF, 1-9)
+0x0182  Overtime Alarm (0=OFF, 1-10)
+0x018A  Priority Channel (1-400)
+0x018F  Lock Mode (0=KEY, 1=KEY+PTT, 2=KEY+ENC, 3=KEY+ALL)
+0x0190  Alert Tone (0=1000Hz, 1=1450Hz, 2=1750Hz, 3=2100Hz)
+0x0191  VOX Delay (1-5 seconds)
+0x0192  Tone Save (0=RX, 1=TX, 2=Both)
+0x0193  Priority Scan (0=OFF, 1=ON)
+0x0198  PF1 Short PF button (1-13)
+0x0199  PF1 Long PF button (1-13)
+0x019A  PF2 Short PF button (1-13)
+0x019B  SCAN-QT (0=OFF, 1=ON)
+0x019C  Startup Message (7 bytes, character encoded)
+```
+
+### DTMF Settings
+```
+0x0184  Sidetone (0=OFF, 1=DT-ST, 2=ANI-ST, 3=DT+ANI)
+0x0185  PTT-ID (0=OFF, 1=BOT, 2=EOT, 3=BOTH)
+0x018C  ID DLY (value*100 = MS, range 100-3000MS)
+0x018D  Ring (0=Off, 1-10 seconds)
+0x0194  Call Reset Time (0-60 seconds)
+0x01AB  DTMF TX Time (50+value*10 = MS, range 50-500MS)
+0x01AC  DTMF Interval Time (50+value*10 = MS, range 50-500MS)
+0x01AE  Be Control (0=OFF, 1=ON)
+0x01A5  ID Control (4 bytes: 3 digits + F terminator)
+0x01AF  ID-EDIT (4 bytes: 3 digits + F terminator)
+```
+
+### CALL ID List (0x2845+)
+20 entries, 6 bytes each, using channel name encoding:
+```
+0x2845  CALL ID1
+0x284B  CALL ID2
+0x2851  CALL ID3
+...
+0x28BD  CALL ID20
+```
 
 ## Editing Tips
 
@@ -174,7 +262,7 @@ U=4b V=4a W=75 X=74 Y=77 Z=76
 
 ### Special
 ```
-Space=7c  Hyphen=71  Empty=AA
+Space=7c  Hyphen=71  Empty=AA  F(terminator)=5a
 ```
 
 ## Frequency Nibble Mapping
@@ -192,6 +280,24 @@ Nibble -> Digit
   C    ->   9
 ```
 
+## PF Button Function Index
+```
+Index  Function
+  1    SCAN
+  2    BACK-LT
+  3    VOX
+  4    TX Power
+  5    CALL
+  6    TALK-A
+  7    FLASHLT
+  8    MONITOR
+  9    REVERSE
+  10   WORKMODE
+  11   ALARM
+  12   SOS
+  13   FAVORITE
+```
+
 ## Notes
 
 - The KG-S88G uses the **same nibble encoding** for both channel names (byte-level) and frequencies (nibble-level)
@@ -200,6 +306,8 @@ Nibble -> Digit
 - The radio supports **400 channels** total
 - Empty channels are marked with **0xAA** bytes
 - Tone and settings bytes use **XOR 0x55** encoding
+- Settings A byte: Power (bit 0), Descramble (bits 2-5, values 0-8), SP Mute (bits 6-7)
+- ID-EDIT and ID Control use 'F' (0x5A) as a terminator character
 
 ## Credits
 

@@ -181,15 +181,20 @@ D251N:   57 7E → mode=0x57^0x55=2, idx=0x7E^0x55=43 → DCS-N[42]=D251
 - DCS code encoding/decoding (Normal and Inverted polarity)
 - OFF tone detection
 - Python CLI tools functional (encode, decode, read, write, list)
+- Channel settings (Power, Bandwidth, Descramble, SP Mute, Busy Lock, Call ID)
+- Optional Features settings (Squelch, VOX, TOT, Beep, etc.)
+- Frequency Mode / VFO settings
+- DTMF Settings (Sidetone, PTT-ID, ID DLY, Ring, Call Reset, TX/Interval Time)
+- ID-EDIT and ID Control text fields
+- CALL ID list (20 entries at 0x2845+)
 
 ### ⚠️ MINOR ISSUES
 - DCS code list: Radio uses 105 codes vs standard 104; exact list order around index 97-105 may need fine-tuning
 - ImHex patterns may need updating to use new XOR 0x55 decoding
+- DTMF read-only fields (Kill, Stun, Monitor, Inspection, Free) location not determined
 
 ### ❌ NOT YET ANALYZED
-- **Other channel settings** - Power, bandwidth, etc. (bytes 12-15 of each channel)
-- **Header section** (0x0000-0x0254) - Radio settings, not yet analyzed
-- **Footer section** - Additional configuration after channel data
+- **Footer section** - Remaining configuration after 0x28C3
 
 ## SOLVED: CTCSS/DCS Encoding
 
@@ -278,8 +283,8 @@ Offset  Size  Description
 +11     1     TX Tone Index (XOR 0x55)
 +12     1     Settings A (XOR 0x55):
                 Bit 0: Power (1=High, 0=Low)
-                Bits 2-3: Descramble value (0=OFF, 1=1, etc.)
-                Bits 6-7: SP Mute mode (00=QT, 10=QT*DT, 01=QT+DT)
+                Bits 2-5: Descramble (0=OFF, 1-8)
+                Bits 6-7: SP Mute mode (0=QT, 1=QT*DT, 2=QT+DT)
 +13     1     Settings B (XOR 0x55):
                 Bit 0: Busy Lock (0=OFF, 1=ON)
                 Bits 3-7: Call ID (value = byte >> 3)
@@ -299,6 +304,170 @@ Padded with space (0x7C) if shorter than 6 characters.
 
 ### Empty Channel Marker
 Unused channels are filled with 0xAA bytes.
+
+## Optional Features (Header Section 0x0165-0x01B5)
+
+All optional feature settings use **XOR 0x55 encoding**: `actual_value = stored_byte ^ 0x55`
+
+### Confirmed Settings
+
+| Offset | Setting | Values | Verified By |
+|--------|---------|--------|-------------|
+| 0x0165 | Squelch | 0-9 | sett-sql9 |
+| 0x0167 | TOP Long (PF button) | 1-13 function index | everythingchanged |
+| 0x0168 | BEEP | 0=OFF, 1=ON | sett-beep-off |
+| 0x0169 | Battery Save | 0=OFF, 1=ON | sett-batterysave-off |
+| 0x016B | Voice | 0=OFF, 2=ON | sett-voice-off |
+| 0x016D | TOT (Time Out Timer) | 0=OFF, 1-60 (15s steps: 1=15s... 60=900s) | sett-tot15s |
+| 0x016E | TOP Short (PF button) | 1-13 function index | everythingchanged |
+| 0x016F | PF2 Long (PF button) | 1-13 function index | everythingchanged |
+| 0x0171 | Auto Lock | 0=OFF, 1-6 (10s steps: 1=10s... 6=60s) | sett-autolock-20s |
+| 0x0172 | Work Mode | 0=Freq, 1=Ch/Freq, 2=Ch/Num, 3=Ch/Name | sett-workmode-* |
+| 0x0173 | Scan Mode | 0=CO, 1=TO, 2=SE | sett-scanmode-co |
+| 0x0175 | Startup Display | 0=Message, 1=Voltage | sett-startupdisplay-voltage |
+| 0x0177 | Roger | 0=OFF, 1=BOT, 2=EOT, 3=BOTH | sett-roger-* |
+| 0x0179 | Backlight Control | 0=OFF, 1-30=level, 31=ALWAYS | sett-backlight-always |
+| 0x017B | Active Channel | 1-400 (channel number) | sett-activechannel-5 |
+| 0x0181 | VOX | 0=OFF, 1-9 | sett-vox-5 |
+| 0x0182 | Overtime Alarm (TOA) | 0=OFF, 1-10 | sett-overtimealarm-1 |
+| 0x018A | Priority Channel | 1-400 (channel number) | sett-prioritychannel-5 |
+| 0x018F | Lock Mode | 0=KEY, 1=KEY+PTT, 2=KEY+ENC, 3=KEY+ALL | sett-lockmode-* |
+| 0x0190 | Alert Tone | 0=1000Hz, 1=1450Hz, 2=1750Hz, 3=2100Hz | sett-alerttone-* |
+| 0x0191 | VOX Delay | 1=1S, 2=2S, 3=3S, 4=4S, 5=5S (0=OFF?) | sett-voxdelay-5s |
+| 0x0192 | Tone Save | 0=RX, 1=TX, 2=Both TX&RX | sett-tonesave-both |
+| 0x0193 | Priority Scan | 0=OFF, 1=ON | sett-priorityscan-on |
+| 0x0198 | PF1 Short (PF button) | 1-13 function index | everythingchanged |
+| 0x0199 | PF1 Long (PF button) | 1-13 function index | everythingchanged |
+| 0x019A | PF2 Short (PF button) | 1-13 function index | everythingchanged |
+| 0x019B | SCAN-QT | 0=OFF, 1=ON | sett-scanqt-on |
+| 0x019C-0x01A2 | Startup Message | 7 characters (same encoding as channel names) | everythingchanged |
+| 0x01B5 | Timer / RPT RCT | See note below | sett-timer-on, sett-rptrct-off |
+
+**Note on 0x01B5 (Timer/RPT RCT):** This byte appears to control both Timer and RPT RCT settings. When Timer is enabled OR RPT RCT is disabled, this byte changes from 0 to 1. They may be mutually exclusive or use combined logic.
+
+### PF Button Function Index (1-indexed)
+
+| Index | Function |
+|-------|----------|
+| 1 | SCAN |
+| 2 | BACK-LT |
+| 3 | VOX |
+| 4 | TX Power |
+| 5 | CALL |
+| 6 | TALK-A |
+| 7 | FLASHLT |
+| 8 | MONITOR |
+| 9 | REVERSE |
+| 10 | WORKMODE |
+| 11 | ALARM |
+| 12 | SOS |
+| 13 | FAVORITE |
+
+### PF Button Locations Summary
+
+| Offset | Button | Stock Value |
+|--------|--------|-------------|
+| 0x0167 | TOP Long | 10 (WORKMODE) |
+| 0x016E | TOP Short | 13 (FAVORITE) |
+| 0x016F | PF2 Long | 8 (MONITOR) |
+| 0x0198 | PF1 Short | 1 (SCAN) |
+| 0x0199 | PF1 Long | 4 (TX Power) |
+| 0x019A | PF2 Short | 7 (FLASHLT) |
+
+### Unknown
+| Offset | Stock→Changed | Notes |
+|--------|---------------|-------|
+| 0x0178 | 0→1 | Purpose unclear |
+| 0x0174 | 1→0 | Changes with Work Mode=Frequency |
+
+## Frequency Mode Settings (VFO)
+
+Settings for when the radio is in VFO/Frequency mode (not channel mode).
+
+### VFO Record (0x0145-0x0154)
+
+| Offset | Size | Description |
+|--------|------|-------------|
+| 0x0145 | 4 | RX Frequency (same encoding as channels) |
+| 0x0149 | 4 | TX Frequency (same encoding as channels) |
+| 0x014D | 4 | Tones: RX Mode, RX Index, TX Mode, TX Index (XOR 0x55) |
+| 0x0151 | 1 | Settings A: Power (bit 0), Descramble (bits 2-5: 0=OFF, 1-8), SP Mute (bits 6-7) |
+| 0x0152 | 1 | Settings B: Busy Lock (bit 0), Call ID (bits 3-7) |
+| 0x0153 | 1 | Settings C: Bandwidth (bit 0: 1=Wide, 0=Narrow) |
+| 0x0154 | 1 | Settings D: Reserved |
+
+### VFO-Specific Settings
+
+| Offset | Setting | Values | Verified By |
+|--------|---------|--------|-------------|
+| 0x0166 | Step | 0=2.5K, 1=5K, 2=6.25K, 3=8.33K, 4=10K, 5=12.5K, 6=25K, 7=50K, 8=100K | sett-vfo-step-25k |
+| 0x017A | Repeater | 0=OFF, 1=ON | sett-vfo-repeater-on |
+
+**Note:** The VFO uses the same encoding for frequencies, tones, and settings as channel records:
+- Power: bit 0 (0=Low, 1=High)
+- Descramble: bits 2-5 (0=OFF, 1-8)
+- SP Mute: bits 6-7 (0=QT, 1=QT*DT, 2=QT+DT)
+- Busy Lock: bit 0 of next byte (0=OFF, 1=ON)
+- Call ID: bits 3-7 of next byte (1-20)
+- Bandwidth: bit 0 of next byte (0=Narrow, 1=Wide)
+
+## DTMF Settings (0x0184-0x01B4 and 0x2845+)
+
+Settings for DTMF signaling, ID codes, and Call ID lists.
+
+### Dropdown Settings (XOR 0x55 encoded)
+
+| Offset | Setting | Values | Stock | Verified By |
+|--------|---------|--------|-------|-------------|
+| 0x0184 | Sidetone | 0=OFF, 1=DT-ST, 2=ANI-ST, 3=DT+ANI | 3 (DT+ANI) | dtmf-sidetone-off |
+| 0x0185 | PTT-ID | 0=OFF, 1=BOT, 2=EOT, 3=BOTH | 0 (OFF) | dtmf-pttid-bot |
+| 0x018C | ID DLY | 1-30 (value × 100 = MS, range 100MS-3000MS) | 10 (1000MS) | dtmf-iddly-100ms |
+| 0x018D | Ring | 0=Off, 1-10 (value = seconds, range 1S-10S) | 5 (5S) | dtmf-ring-off |
+| 0x0194 | Call Reset Time | 0-60 (value = seconds, range 0S-60S) | 10 (10S) | dtmf-callreset-0s |
+| 0x01AB | DTMF TX Time | 0-45 (50 + value × 10 = MS, range 50MS-500MS) | 5 (100MS) | dtmf-txtime-50ms |
+| 0x01AC | DTMF Interval Time | 0-45 (50 + value × 10 = MS, range 50MS-500MS) | 5 (100MS) | dtmf-interval-50ms |
+
+### Checkbox Settings (XOR 0x55 encoded)
+
+| Offset | Setting | Values | Stock | Verified By |
+|--------|---------|--------|-------|-------------|
+| 0x01AE | Be Control | 0=unchecked, 1=checked | 1 (checked) | dtmf-becontrol-off |
+
+### Text Fields (channel name encoding)
+
+| Offset | Size | Setting | Format | Stock |
+|--------|------|---------|--------|-------|
+| 0x01A5-0x01A8 | 4 | ID Control | Up to 3 digits + 'F' terminator | "101F" |
+| 0x01AF-0x01B2 | 4 | ID-EDIT | Up to 3 digits + 'F' terminator | "101F" |
+
+**Encoding**: Uses same character encoding as channel names. 'F' (0x5A) is used as terminator.
+
+### CALL ID List (0x2845+, 20 entries × 6 bytes)
+
+| Offset | Setting |
+|--------|---------|
+| 0x2845-0x284A | CALL ID1 |
+| 0x284B-0x2850 | CALL ID2 |
+| 0x2851-0x2856 | CALL ID3 |
+| ... | ... |
+| 0x28B7-0x28BC | CALL ID19 |
+| 0x28BD-0x28C2 | CALL ID20 |
+
+**Encoding**: Uses same character encoding as channel names. Each ID is 6 bytes.
+- Empty IDs are filled with 0xAA
+- Unused positions padded with 0x7C (space)
+- Example: "12345" encodes as: 54 57 56 51 50 7C
+
+### Read-Only Fields (grayed out in software)
+
+These fields are displayed but not editable in the programming software:
+- Kill: AB
+- Stun: CB
+- Monitor: DA
+- Inspection: DB
+- Free: AD
+
+Location in file: TBD (hardcoded or protected area)
 
 ## Quick Reference
 

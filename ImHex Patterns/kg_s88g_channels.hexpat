@@ -10,6 +10,7 @@ import std.string;
 // ============================================================================
 // Shows human-readable frequency and name values
 // 400 channels supported
+// Settings A: Power (bit 0), Descramble (bits 2-5), SP Mute (bits 6-7)
 
 // Nibble to digit mapping
 fn decode_nibble(u8 nibble) {
@@ -120,10 +121,17 @@ struct Settings {
 
 fn fmt_settings(Settings s) {
     u8 a = s.a ^ 0x55;
+    u8 b = s.b ^ 0x55;
     u8 c = s.c ^ 0x55;
     str pwr = (a & 0x01) ? "High" : "Low";
     str bw = (c & 0x01) ? "Wide" : "Narrow";
-    return pwr + "/" + bw;
+    u8 desc = (a >> 2) & 0x0F;
+    str desc_str = "";
+    if (desc > 0) {
+        desc_str = " Desc=" + std::string::to_string(desc);
+    }
+    str busy = (b & 0x01) ? " BusyLock" : "";
+    return pwr + "/" + bw + desc_str + busy;
 };
 
 // Channel name structure
@@ -152,12 +160,32 @@ struct Channel {
     Settings settings [[name("Settings")]];
 };
 
+// VFO Record
+struct VFORecord {
+    Frequency rx [[name("VFO RX")]];
+    Frequency tx [[name("VFO TX")]];
+    Tone rx_tone [[name("VFO RX Tone")]];
+    Tone tx_tone [[name("VFO TX Tone")]];
+    Settings settings [[name("VFO Settings")]];
+};
+
+// CALL ID entry
+struct CallIDEntry {
+    u8 digits[6];
+} [[format("fmt_name")]];
+
 // Main file structure
 struct KG_S88G_Channels {
-    u8 header[0x0255] @ 0x0000 [[name("Header")]];
+    u8 header[0x0145] @ 0x0000 [[name("Header")]];
+    VFORecord vfo @ 0x0145 [[name("VFO Record")]];
+    u8 header2[0x0100] @ 0x0155 [[name("Header (cont)")]];
     Channel channels[400] @ 0x0255 [[name("Channels")]];
     u8 gap[0xF6] @ 0x1B55 [[name("Gap")]];
     Name names[400] @ 0x1C4B [[name("Names")]];
+    u8 additional[0x021A] @ 0x25AB [[name("Additional")]];
+    u8 favorites[51] @ 0x27C5 [[name("Favorites")]];
+    u8 gap2[0x007F] @ 0x27F8 [[name("Gap 2")]];
+    CallIDEntry call_ids[20] @ 0x2845 [[name("CALL IDs")]];
 };
 
 KG_S88G_Channels file @ 0x00;
