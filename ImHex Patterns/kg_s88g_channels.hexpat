@@ -170,9 +170,21 @@ struct VFORecord {
 };
 
 // CALL ID entry
-struct CallIDEntry {
-    u8 digits[6];
-} [[format("fmt_name")]];
+struct CallID {
+    u8 c[6];
+} [[format("fmt_call_id")]];
+
+fn fmt_call_id(CallID id) {
+    if (id.c[0] == 0xAA) return "(Empty)";
+    str r = "";
+    r += char(decode_char(id.c[0]));
+    r += char(decode_char(id.c[1]));
+    r += char(decode_char(id.c[2]));
+    r += char(decode_char(id.c[3]));
+    r += char(decode_char(id.c[4]));
+    r += char(decode_char(id.c[5]));
+    return r;
+};
 
 // Main file structure
 struct KG_S88G_Channels {
@@ -185,7 +197,7 @@ struct KG_S88G_Channels {
     u8 additional[0x021A] @ 0x25AB [[name("Additional")]];
     u8 favorites[51] @ 0x27C5 [[name("Favorites")]];
     u8 gap2[0x007F] @ 0x27F8 [[name("Gap 2")]];
-    CallIDEntry call_ids[20] @ 0x2845 [[name("CALL IDs")]];
+    CallID call_ids[20] @ 0x2845 [[name("CALL IDs")]];
 };
 
 KG_S88G_Channels file @ 0x00;

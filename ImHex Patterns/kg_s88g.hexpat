@@ -296,9 +296,22 @@ struct DTMFSettings {
 // CALL ID Entry (6 bytes each)
 // ============================================================================
 
-struct CallIDEntry {
-    u8 digits[6];
-} [[format("format_channel_name")]];
+struct CallID {
+    u8 chars[6];
+} [[format("format_call_id"), color("88FF88")]];
+
+fn format_call_id(CallID id) {
+    if (id.chars[0] == 0xAA) return "(Empty)";
+
+    str result = "";
+    result += char(decode_char(id.chars[0]));
+    result += char(decode_char(id.chars[1]));
+    result += char(decode_char(id.chars[2]));
+    result += char(decode_char(id.chars[3]));
+    result += char(decode_char(id.chars[4]));
+    result += char(decode_char(id.chars[5]));
+    return result;
+};
 
 // ============================================================================
 // Main File Structure
@@ -333,7 +346,7 @@ struct KG_S88G_Config {
 
     // CALL ID list: 20 entries x 6 bytes
     // Located at 0x2845
-    CallIDEntry call_ids[20] @ 0x2845 [[comment("CALL ID list (20 entries)")]];
+    CallID call_ids[20] @ 0x2845 [[comment("CALL ID list (20 entries)")]];
 };
 
 // Entry point
