@@ -5,8 +5,19 @@
 import std.mem;
 import std.string;
 
-// Custom nibble-to-digit mapping used by KG-S88G (returns u8 ASCII code)
-// This matches the encoding used for both channel names and frequencies
+// ============================================================================
+// KG-S88G File Format Constants
+// ============================================================================
+// File size: 16712 bytes (0x4148)
+// Channels: 400 total
+// Frequency data: 0x0255 - 0x1B54 (6400 bytes, 16 bytes per channel)
+// Channel names: 0x1C4B - 0x25AA (2400 bytes, 6 bytes per channel)
+// ============================================================================
+
+// XOR mask for tone and settings encoding
+#define XOR_MASK 0x55
+
+// Custom nibble-to-digit mapping used by KG-S88G
 fn decode_nibble(u8 nibble) {
     if (nibble == 0x5) return 0x30; // '0'
     else if (nibble == 0x4) return 0x31; // '1'
@@ -21,7 +32,7 @@ fn decode_nibble(u8 nibble) {
     else return 0x3f; // '?'
 };
 
-// Decode a single encoded character byte to ASCII (returns u8 ASCII code)
+// Decode a single encoded character byte to ASCII
 fn decode_char(u8 encoded_byte) {
     // Letters
     if (encoded_byte == 0x5f) return 0x41; // 'A'
@@ -50,6 +61,7 @@ fn decode_char(u8 encoded_byte) {
     else if (encoded_byte == 0x74) return 0x58; // 'X'
     else if (encoded_byte == 0x77) return 0x59; // 'Y'
     else if (encoded_byte == 0x76) return 0x5a; // 'Z'
+    else if (encoded_byte == 0x71) return 0x2d; // '-'
     // Digits
     else if (encoded_byte == 0x55) return 0x30; // '0'
     else if (encoded_byte == 0x54) return 0x31; // '1'
@@ -63,24 +75,29 @@ fn decode_char(u8 encoded_byte) {
     else if (encoded_byte == 0x5c) return 0x39; // '9'
     // Space/padding
     else if (encoded_byte == 0x7c) return 0x20; // ' '
+    else if (encoded_byte == 0xAA) return 0x20; // Empty marker
     else return 0x3f; // '?'
 };
 
-// Frequency type - 4 bytes encoded as nibble-mapped BCD
+// ============================================================================
+// Frequency Structure
+// ============================================================================
+// 4 bytes, nibble-mapped BCD, little-endian (reversed)
 // Format: XXX.YYYYY MHz (8 digits total)
-// Bytes are stored in little-endian (reversed) order
+
 struct Frequency {
-    u8 byte3;  // Stored reversed, so byte 3 is first in file
+    u8 byte3;
     u8 byte2;
     u8 byte1;
-    u8 byte0;  // Byte 0 is last in file
-    
-    // Decode the frequency to display format
-    char decoded_str[12] [[hidden]];
-} [[format("format_frequency"), transform("transform_frequency")]];
+    u8 byte0;
+} [[format("format_frequency")]];
 
 fn format_frequency(Frequency freq) {
-    // Extract nibbles and decode to digits
+    // Check for empty channel marker
+    if (freq.byte0 == 0xAA && freq.byte1 == 0xAA) {
+        return "----.---- MHz (Empty)";
+    }
+
     u8 d0 = decode_nibble((freq.byte0 >> 4) & 0x0F);
     u8 d1 = decode_nibble(freq.byte0 & 0x0F);
     u8 d2 = decode_nibble((freq.byte1 >> 4) & 0x0F);
@@ -89,8 +106,7 @@ fn format_frequency(Frequency freq) {
     u8 d5 = decode_nibble(freq.byte2 & 0x0F);
     u8 d6 = decode_nibble((freq.byte3 >> 4) & 0x0F);
     u8 d7 = decode_nibble(freq.byte3 & 0x0F);
-    
-    // Format as XXX.YYYYY MHz
+
     str result = "";
     result += char(d0);
     result += char(d1);
@@ -105,92 +121,132 @@ fn format_frequency(Frequency freq) {
     return result;
 };
 
-fn transform_frequency(Frequency freq) {
-    // Extract nibbles and convert to numeric value
-    u8 digit0 = decode_nibble((freq.byte0 >> 4) & 0x0F) - '0';
-    u8 digit1 = decode_nibble(freq.byte0 & 0x0F) - '0';
-    u8 digit2 = decode_nibble((freq.byte1 >> 4) & 0x0F) - '0';
-    u8 digit3 = decode_nibble(freq.byte1 & 0x0F) - '0';
-    u8 digit4 = decode_nibble((freq.byte2 >> 4) & 0x0F) - '0';
-    u8 digit5 = decode_nibble(freq.byte2 & 0x0F) - '0';
-    u8 digit6 = decode_nibble((freq.byte3 >> 4) & 0x0F) - '0';
-    u8 digit7 = decode_nibble(freq.byte3 & 0x0F) - '0';
-    
-    // Calculate numeric value (in MHz)
-    double freq_mhz = digit0 * 100.0 + digit1 * 10.0 + digit2 * 1.0 +
-                      digit3 * 0.1 + digit4 * 0.01 + digit5 * 0.001 +
-                      digit6 * 0.0001 + digit7 * 0.00001;
-    
-    return freq_mhz;
+// ============================================================================
+// Tone Structure (CTCSS/DCS)
+// ============================================================================
+// 2 bytes per tone: [MODE_BYTE][INDEX_BYTE]
+// Both bytes XORed with 0x55
+// Mode: 0=OFF, 1=CTCSS, 2=DCS-N, 3=DCS-I
+// Index: 1-based into CTCSS (1-38) or DCS (1-104) list
+
+struct Tone {
+    u8 mode_byte;   // XOR 0x55: 0=OFF, 1=CTCSS, 2=DCS-N, 3=DCS-I
+    u8 index_byte;  // XOR 0x55: 1-based index
+} [[format("format_tone")]];
+
+fn format_tone(Tone t) {
+    u8 mode = t.mode_byte ^ 0x55;
+    u8 idx = t.index_byte ^ 0x55;
+
+    if (mode == 0) return "OFF";
+    else if (mode == 1) {
+        // CTCSS - show index (would need lookup table for actual Hz)
+        return "CTCSS #" + std::string::to_string(idx);
+    }
+    else if (mode == 2) {
+        return "DCS-N #" + std::string::to_string(idx);
+    }
+    else if (mode == 3) {
+        return "DCS-I #" + std::string::to_string(idx);
+    }
+    return "Unknown";
 };
 
-// Channel name - 6 bytes encoded with custom character mapping
+// ============================================================================
+// Channel Settings Structure
+// ============================================================================
+// 4 bytes at offset +12, all XORed with 0x55
+// Byte 12: Power (bit 0), Descramble (bits 2-3), SP Mute (bits 6-7)
+// Byte 13: Busy Lock (bit 0), Call ID (bits 3-7)
+// Byte 14: Bandwidth (bit 0)
+// Byte 15: Reserved
+
+struct ChannelSettings {
+    u8 settings_a;  // Power, Descramble, SP Mute
+    u8 settings_b;  // Busy Lock, Call ID
+    u8 settings_c;  // Bandwidth
+    u8 settings_d;  // Reserved
+} [[format("format_settings")]];
+
+fn format_settings(ChannelSettings s) {
+    u8 a = s.settings_a ^ 0x55;
+    u8 b = s.settings_b ^ 0x55;
+    u8 c = s.settings_c ^ 0x55;
+
+    str power = (a & 0x01) ? "High" : "Low";
+    str bw = (c & 0x01) ? "Wide" : "Narrow";
+    str busy = (b & 0x01) ? "BusyLock" : "";
+    u8 call_id = (b >> 3) & 0x1F;
+
+    return power + "/" + bw + " CallID=" + std::string::to_string(call_id);
+};
+
+// ============================================================================
+// Channel Name Structure
+// ============================================================================
+// 6 bytes, custom character encoding
+
 struct ChannelName {
-    u8 char0_encoded [[name("C0")]];
-    u8 char1_encoded [[name("C1")]];
-    u8 char2_encoded [[name("C2")]];
-    u8 char3_encoded [[name("C3")]];
-    u8 char4_encoded [[name("C4")]];
-    u8 char5_encoded [[name("C5")]];
+    u8 chars[6];
 } [[format("format_channel_name"), color("00FFFF")]];
 
 fn format_channel_name(ChannelName name) {
-    u8 c0 = decode_char(name.char0_encoded);
-    u8 c1 = decode_char(name.char1_encoded);
-    u8 c2 = decode_char(name.char2_encoded);
-    u8 c3 = decode_char(name.char3_encoded);
-    u8 c4 = decode_char(name.char4_encoded);
-    u8 c5 = decode_char(name.char5_encoded);
-    
-    // Build string character by character
+    // Check for empty
+    if (name.chars[0] == 0xAA) return "(Empty)";
+
     str result = "";
-    result += char(c0);
-    result += char(c1);
-    result += char(c2);
-    result += char(c3);
-    result += char(c4);
-    result += char(c5);
+    result += char(decode_char(name.chars[0]));
+    result += char(decode_char(name.chars[1]));
+    result += char(decode_char(name.chars[2]));
+    result += char(decode_char(name.chars[3]));
+    result += char(decode_char(name.chars[4]));
+    result += char(decode_char(name.chars[5]));
     return result;
 };
 
-// Channel record - 16 bytes per channel
-struct ChannelFrequencyData {
+// ============================================================================
+// Complete Channel Record (16 bytes)
+// ============================================================================
+
+struct ChannelRecord {
     Frequency rx_frequency [[comment("Receive frequency")]];
     Frequency tx_frequency [[comment("Transmit frequency")]];
-    u8 other_data[8] [[comment("CTCSS/DCS codes, power, bandwidth, etc.")]];
+    Tone rx_tone [[comment("RX CTCSS/DCS")]];
+    Tone tx_tone [[comment("TX CTCSS/DCS")]];
+    ChannelSettings settings [[comment("Power, BW, etc.")]];
 };
 
-// Channel configuration (frequency + name)
-struct Channel {
-    u32 channel_num;
-    ChannelFrequencyData freq_data [[inline]];
-};
+// ============================================================================
+// Main File Structure
+// ============================================================================
 
-// File header/configuration area
-struct FileHeader {
-    u8 unknown_header[0x255] [[comment("Radio configuration and settings")]];
-};
-
-// Channel names section - located at a different offset
-struct ChannelNamesSection {
-    ChannelName names[30] [[comment("Channel display names - 6 bytes each")]];
-};
-
-// Main file structure
 struct KG_S88G_Config {
-    // Channel frequency data at absolute offset 0x0255
-    ChannelFrequencyData channel_freq_data[30] @ 0x0255 [[comment("Channel frequency configuration")]];
-    
-    // Channel names at absolute offset 0x1c4b
-    ChannelNamesSection channel_names @ 0x1c4b [[comment("Channel names (6 bytes each)")]];
+    // Header section (radio settings)
+    u8 header[0x0255] @ 0x0000 [[comment("Radio settings and configuration")]];
+
+    // Channel frequency data: 400 channels x 16 bytes = 6400 bytes
+    // Located at 0x0255 - 0x1B54
+    ChannelRecord channels[400] @ 0x0255 [[comment("Channel frequency/tone/settings data")]];
+
+    // Gap between freq data and names (filled with 0xAA)
+    u8 gap[0xF6] @ 0x1B55 [[comment("Padding (0xAA)")]];
+
+    // Channel names: 400 channels x 6 bytes = 2400 bytes
+    // Located at 0x1C4B - 0x25AA
+    ChannelName names[400] @ 0x1C4B [[comment("Channel names (6 chars each)")]];
+
+    // Favorites bitmap at 0x27C5 (51 bytes for 400 channels)
+    u8 favorites[51] @ 0x27C5 [[comment("Favorites bitmask")]];
 };
 
 // Entry point
 KG_S88G_Config config @ 0x00;
 
-// Add some helpful comments at the top level
-std::print("KG-S88G Radio Configuration");
-std::print("============================");
-std::print("Frequency encoding: Custom nibble-mapped BCD");
-std::print("Channel name encoding: Custom character map");
-std::print("Structure: 16 bytes per channel (RX + TX + settings)");
+std::print("===========================================");
+std::print("KG-S88G Radio Configuration File");
+std::print("===========================================");
+std::print("Channels: 400");
+std::print("Freq data: 0x0255-0x1B54 (16 bytes/ch)");
+std::print("Names: 0x1C4B-0x25AA (6 bytes/ch)");
+std::print("Tone encoding: XOR 0x55");
+std::print("===========================================");

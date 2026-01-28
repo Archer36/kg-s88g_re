@@ -235,16 +235,15 @@ Update the .hexpat files to use the XOR 0x55 decoding method for proper tone dis
 
 ## Code Locations
 
-All code files are in `/mnt/user-data/outputs/`:
-- `kg_s88g_channel_encoder.py`
-- `kg_s88g_freq_encoder.py`
-- `kg_s88g.hexpat`
-- `kg_s88g_simple.hexpat`
-- `kg_s88g_channels.hexpat`
-- `IMHEX_README.md`
-- `DCS_MAPPING_TODO.md`
+All code files are in the project root:
+- `kg_s88g_channel_encoder.py` - Channel name encoding/decoding
+- `kg_s88g_freq_encoder.py` - Full channel read/write with CSV import/export
+- `ImHex Patterns/kg_s88g.hexpat` - Main ImHex pattern
+- `ImHex Patterns/kg_s88g_simple.hexpat` - Simplified pattern
+- `ImHex Patterns/kg_s88g_channels.hexpat` - Channel-focused pattern
+- `ImHex Patterns/IMHEX_README.md` - ImHex usage documentation
 
-Test files are in `/mnt/user-data/uploads/`.
+Test files are in `Test Saves/` folder.
 
 ## Key Insights
 
@@ -331,4 +330,10 @@ python kg_s88g_freq_encoder.py read radio.dat 1
 
 # Encode a frequency
 python kg_s88g_freq_encoder.py encode 462.5625
+
+# Clear a single channel
+python kg_s88g_freq_encoder.py clear radio.dat 5
+
+# Clear a range of channels
+python kg_s88g_freq_encoder.py clear radio.dat 10-20
 ```

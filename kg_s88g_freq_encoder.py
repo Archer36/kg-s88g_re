@@ -610,6 +610,61 @@ def export_to_csv(dat_file: str, csv_file: str, num_channels: int = 30) -> int:
     return len(channels)
 
 
+def clear_channels(dat_file: str, start_channel: int, end_channel: int = None,
+                   create_backup: bool = True) -> int:
+    """
+    Clear (delete) one or more channels by writing 0xAA to their data.
+
+    Args:
+        dat_file: Path to the .dat file
+        start_channel: First channel to clear (1-based)
+        end_channel: Last channel to clear (inclusive), or None for single channel
+        create_backup: If True, create a .bak backup before modifying
+
+    Returns:
+        Number of channels cleared
+    """
+    import shutil
+    from kg_s88g_channel_encoder import CHANNEL_NAME_OFFSET, CHANNEL_NAME_STRIDE
+
+    if end_channel is None:
+        end_channel = start_channel
+
+    # Validate range
+    if start_channel < 1 or end_channel > MAX_CHANNELS:
+        raise ValueError(f"Channel numbers must be between 1 and {MAX_CHANNELS}")
+    if start_channel > end_channel:
+        raise ValueError("Start channel must be <= end channel")
+
+    # Create backup
+    if create_backup:
+        backup_file = dat_file + '.bak'
+        shutil.copy2(dat_file, backup_file)
+
+    with open(dat_file, 'rb') as f:
+        data = bytearray(f.read())
+
+    # Clear each channel
+    count = 0
+    for channel_num in range(start_channel, end_channel + 1):
+        # Clear frequency/tone/settings data (16 bytes) - all 0xAA per stock firmware
+        freq_offset = FREQ_DATA_START + ((channel_num - 1) * BYTES_PER_CHANNEL)
+        for i in range(BYTES_PER_CHANNEL):
+            data[freq_offset + i] = 0xAA
+
+        # Clear channel name (6 bytes) - 0xAA per stock firmware
+        name_offset = CHANNEL_NAME_OFFSET + ((channel_num - 1) * CHANNEL_NAME_STRIDE)
+        for i in range(CHANNEL_NAME_STRIDE):
+            data[name_offset + i] = 0xAA
+
+        count += 1
+
+    with open(dat_file, 'wb') as f:
+        f.write(data)
+
+    return count
+
+
 def import_from_csv(csv_file: str, dat_file: str, create_backup: bool = True) -> int:
     """
     Import channel data from CSV into a .dat file.
@@ -700,6 +755,12 @@ Examples:
 
   # List all frequencies
   %(prog)s list radio.dat -n 22
+
+  # Clear a single channel
+  %(prog)s clear radio.dat 5
+
+  # Clear a range of channels
+  %(prog)s clear radio.dat 10-20
         """
     )
     
@@ -753,7 +814,14 @@ Examples:
     import_parser.add_argument('dat_file', help='Path to .dat file to modify')
     import_parser.add_argument('--no-backup', action='store_true',
                                help='Do not create backup before modifying')
-    
+
+    # Clear command
+    clear_parser = subparsers.add_parser('clear', help='Clear (delete) channels')
+    clear_parser.add_argument('file', help='Path to .dat file')
+    clear_parser.add_argument('range', help='Channel(s) to clear: single (5) or range (1-10)')
+    clear_parser.add_argument('--no-backup', action='store_true',
+                              help='Do not create backup before modifying')
+
     args = parser.parse_args()
     
     if not args.command:
@@ -847,6 +915,26 @@ Examples:
             if not args.no_backup:
                 print(f"Backup created: {args.dat_file}.bak")
             print(f"Imported {count} channels from {args.csv_file}")
+
+        elif args.command == 'clear':
+            # Parse range argument: "5" or "1-10"
+            range_arg = args.range
+            if '-' in range_arg:
+                parts = range_arg.split('-')
+                start_ch = int(parts[0])
+                end_ch = int(parts[1])
+            else:
+                start_ch = int(range_arg)
+                end_ch = start_ch
+
+            count = clear_channels(args.file, start_ch, end_ch,
+                                   create_backup=not args.no_backup)
+            if not args.no_backup:
+                print(f"Backup created: {args.file}.bak")
+            if start_ch == end_ch:
+                print(f"Cleared channel {start_ch}")
+            else:
+                print(f"Cleared {count} channels ({start_ch}-{end_ch})")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
