@@ -1,0 +1,323 @@
+//------------------------------------------------
+//--- 010 Editor v14.0 Binary Template
+//
+//      File: kg_s88g.bt
+//   Authors: Reverse Engineered
+//   Version: 1.0
+//   Purpose: Parse Wouxun KG-S88G Radio Configuration Files
+//  Category: Radio
+// File Mask: *.dat
+//  ID Bytes:
+//   History:
+//------------------------------------------------
+// File size: 16712 bytes (0x4148)
+// Channels: 400 total
+// All settings use XOR 0x55 encoding
+//------------------------------------------------
+
+LittleEndian();
+
+// XOR mask for decoding
+local uchar XOR_MASK = 0x55;
+
+//------------------------------------------------
+// Decoding Functions
+//------------------------------------------------
+
+// Decode nibble to digit character
+char DecodeNibble(uchar nibble) {
+    switch(nibble) {
+        case 0x5: return '0';
+        case 0x4: return '1';
+        case 0x7: return '2';
+        case 0x6: return '3';
+        case 0x1: return '4';
+        case 0x0: return '5';
+        case 0x3: return '6';
+        case 0x2: return '7';
+        case 0xD: return '8';
+        case 0xC: return '9';
+        default:  return '?';
+    }
+}
+
+// Decode character byte to ASCII
+char DecodeChar(uchar b) {
+    switch(b) {
+        // Letters
+        case 0x5f: return 'A';
+        case 0x5e: return 'B';
+        case 0x59: return 'C';
+        case 0x58: return 'D';
+        case 0x5b: return 'E';
+        case 0x5a: return 'F';
+        case 0x45: return 'G';
+        case 0x44: return 'H';
+        case 0x47: return 'I';
+        case 0x46: return 'J';
+        case 0x41: return 'K';
+        case 0x40: return 'L';
+        case 0x43: return 'M';
+        case 0x42: return 'N';
+        case 0x4d: return 'O';
+        case 0x4c: return 'P';
+        case 0x4f: return 'Q';
+        case 0x4e: return 'R';
+        case 0x49: return 'S';
+        case 0x48: return 'T';
+        case 0x4b: return 'U';
+        case 0x4a: return 'V';
+        case 0x75: return 'W';
+        case 0x74: return 'X';
+        case 0x77: return 'Y';
+        case 0x76: return 'Z';
+        case 0x71: return '-';
+        // Digits
+        case 0x55: return '0';
+        case 0x54: return '1';
+        case 0x57: return '2';
+        case 0x56: return '3';
+        case 0x51: return '4';
+        case 0x50: return '5';
+        case 0x53: return '6';
+        case 0x52: return '7';
+        case 0x5d: return '8';
+        case 0x5c: return '9';
+        // Space/padding
+        case 0x7c: return ' ';
+        case 0xAA: return ' ';
+        default:   return '?';
+    }
+}
+
+//------------------------------------------------
+// Frequency Structure (4 bytes)
+//------------------------------------------------
+
+typedef struct {
+    uchar byte3;
+    uchar byte2;
+    uchar byte1;
+    uchar byte0;
+} FREQUENCY <read=ReadFrequency, bgcolor=0x00FF00>;
+
+string ReadFrequency(FREQUENCY &f) {
+    if (f.byte0 == 0xAA && f.byte1 == 0xAA)
+        return "(Empty)";
+
+    local string s;
+    SPrintf(s, "%c%c%c.%c%c%c%c%c MHz",
+        DecodeNibble((f.byte0 >> 4) & 0x0F),
+        DecodeNibble(f.byte0 & 0x0F),
+        DecodeNibble((f.byte1 >> 4) & 0x0F),
+        DecodeNibble(f.byte1 & 0x0F),
+        DecodeNibble((f.byte2 >> 4) & 0x0F),
+        DecodeNibble(f.byte2 & 0x0F),
+        DecodeNibble((f.byte3 >> 4) & 0x0F),
+        DecodeNibble(f.byte3 & 0x0F));
+    return s;
+}
+
+//------------------------------------------------
+// Tone Structure (2 bytes)
+//------------------------------------------------
+
+typedef struct {
+    uchar mode_byte;    // XOR 0x55: 0=OFF, 1=CTCSS, 2=DCS-N, 3=DCS-I
+    uchar index_byte;   // XOR 0x55: 1-based index
+} TONE <read=ReadTone, bgcolor=0x00FFFF>;
+
+string ReadTone(TONE &t) {
+    local uchar mode = t.mode_byte ^ 0x55;
+    local uchar idx = t.index_byte ^ 0x55;
+    local string s;
+
+    switch(mode) {
+        case 0: return "OFF";
+        case 1: SPrintf(s, "CTCSS #%d", idx); return s;
+        case 2: SPrintf(s, "DCS-N #%d", idx); return s;
+        case 3: SPrintf(s, "DCS-I #%d", idx); return s;
+        default: return "Unknown";
+    }
+}
+
+//------------------------------------------------
+// Channel Settings Structure (4 bytes)
+//------------------------------------------------
+
+typedef struct {
+    uchar settings_a;   // Power(bit0), Descramble(bits2-5), SP Mute(bits6-7)
+    uchar settings_b;   // Busy Lock(bit0), Call ID(bits3-7)
+    uchar settings_c;   // Bandwidth(bit0)
+    uchar settings_d;   // Reserved
+} SETTINGS <read=ReadSettings, bgcolor=0xFF00FF>;
+
+string ReadSettings(SETTINGS &s) {
+    local uchar a = s.settings_a ^ 0x55;
+    local uchar b = s.settings_b ^ 0x55;
+    local uchar c = s.settings_c ^ 0x55;
+    local string result;
+    local string pwr = (a & 0x01) ? "High" : "Low";
+    local string bw = (c & 0x01) ? "Wide" : "Narrow";
+    local uchar desc = (a >> 2) & 0x0F;
+    local uchar callid = (b >> 3) & 0x1F;
+
+    if (desc > 0)
+        SPrintf(result, "%s/%s Desc=%d CallID=%d", pwr, bw, desc, callid);
+    else
+        SPrintf(result, "%s/%s CallID=%d", pwr, bw, callid);
+
+    if (b & 0x01)
+        result += " BusyLock";
+
+    return result;
+}
+
+//------------------------------------------------
+// Channel Name Structure (6 bytes)
+//------------------------------------------------
+
+typedef struct {
+    uchar chars[6];
+} CHANNELNAME <read=ReadChannelName, bgcolor=0xFFFF00>;
+
+string ReadChannelName(CHANNELNAME &n) {
+    if (n.chars[0] == 0xAA)
+        return "(Empty)";
+
+    local string s;
+    SPrintf(s, "%c%c%c%c%c%c",
+        DecodeChar(n.chars[0]),
+        DecodeChar(n.chars[1]),
+        DecodeChar(n.chars[2]),
+        DecodeChar(n.chars[3]),
+        DecodeChar(n.chars[4]),
+        DecodeChar(n.chars[5]));
+    return s;
+}
+
+//------------------------------------------------
+// CALL ID Structure (6 bytes)
+//------------------------------------------------
+
+typedef struct {
+    uchar digits[6];
+} CALLID <read=ReadCallID, bgcolor=0x88FF88>;
+
+string ReadCallID(CALLID &id) {
+    if (id.digits[0] == 0xAA)
+        return "(Empty)";
+
+    local string s;
+    SPrintf(s, "%c%c%c%c%c%c",
+        DecodeChar(id.digits[0]),
+        DecodeChar(id.digits[1]),
+        DecodeChar(id.digits[2]),
+        DecodeChar(id.digits[3]),
+        DecodeChar(id.digits[4]),
+        DecodeChar(id.digits[5]));
+    return s;
+}
+
+//------------------------------------------------
+// XOR 0x55 Decoded Byte
+//------------------------------------------------
+
+typedef struct {
+    uchar value;
+} XORBYTE <read=ReadXorByte>;
+
+string ReadXorByte(XORBYTE &x) {
+    local string s;
+    SPrintf(s, "%d", x.value ^ 0x55);
+    return s;
+}
+
+//------------------------------------------------
+// Complete Channel Record (16 bytes)
+//------------------------------------------------
+
+typedef struct {
+    FREQUENCY rx_frequency;
+    FREQUENCY tx_frequency;
+    TONE rx_tone;
+    TONE tx_tone;
+    SETTINGS settings;
+} CHANNEL <read=ReadChannel>;
+
+string ReadChannel(CHANNEL &ch) {
+    return ReadFrequency(ch.rx_frequency);
+}
+
+//------------------------------------------------
+// VFO Record (16 bytes)
+//------------------------------------------------
+
+typedef struct {
+    FREQUENCY rx_frequency;
+    FREQUENCY tx_frequency;
+    TONE rx_tone;
+    TONE tx_tone;
+    SETTINGS settings;
+} VFORECORD <read=ReadVFO, bgcolor=0x0088FF>;
+
+string ReadVFO(VFORECORD &vfo) {
+    return "VFO: " + ReadFrequency(vfo.rx_frequency);
+}
+
+//------------------------------------------------
+// Main File Structure
+//------------------------------------------------
+
+typedef struct {
+    // Header start
+    uchar header_start[0x0145] <bgcolor=0x808080, comment="Header Start">;
+
+    // VFO Record at 0x0145
+    VFORECORD vfo <comment="VFO/Frequency Mode settings">;
+
+    // Header continuation
+    uchar header_mid[0x0100] <bgcolor=0x808080, comment="Header (Optional Features, DTMF, etc.)">;
+
+    // Channel frequency data: 400 channels x 16 bytes
+    CHANNEL channels[400] <comment="Channel frequency/tone/settings">;
+
+    // Gap (0xAA padding)
+    uchar gap[0xF6] <bgcolor=0x404040, comment="Gap (0xAA padding)">;
+
+    // Channel names: 400 channels x 6 bytes
+    CHANNELNAME names[400] <comment="Channel names">;
+
+    // Additional settings
+    uchar additional[0x021A] <bgcolor=0x606060, comment="Additional Settings">;
+
+    // Favorites bitmap
+    uchar favorites[51] <bgcolor=0x0088FF, comment="Favorites Bitmap">;
+
+    // Gap to CALL IDs
+    uchar gap2[0x4D] <bgcolor=0x404040, comment="Gap">;
+
+    // CALL ID list: 20 entries x 6 bytes
+    CALLID call_ids[20] <comment="CALL ID List">;
+
+    // Remaining configuration
+    uchar remaining[6277] <bgcolor=0x606060, comment="Remaining Configuration">;
+
+} KG_S88G_FILE;
+
+//------------------------------------------------
+// Parse File
+//------------------------------------------------
+
+KG_S88G_FILE file;
+
+Printf("===========================================\n");
+Printf("KG-S88G Radio Configuration File\n");
+Printf("===========================================\n");
+Printf("File size: %d bytes\n", FileSize());
+Printf("Channels: 400\n");
+Printf("VFO: 0x0145-0x0154\n");
+Printf("Freq data: 0x0255-0x1B54\n");
+Printf("Names: 0x1C4B-0x25AA\n");
+Printf("CALL IDs: 0x2845+\n");
+Printf("===========================================\n");
