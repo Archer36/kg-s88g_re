@@ -163,7 +163,7 @@ D251N:   57 7E → mode=0x57^0x55=2, idx=0x7E^0x55=43 → DCS-N[42]=D251
 - CLI: `encode`, `decode`, `read`, `write`, `list`
 - **Current limitation**: DCS codes show as CTCSS frequencies
 
-### 2. ImHex Patterns
+### 2. ImHex Patterns (in `ImHex Patterns/`)
 
 **kg_s88g.hexpat** (main pattern):
 - Full structure with decode functions
@@ -187,6 +187,18 @@ D251N:   57 7E → mode=0x57^0x55=2, idx=0x7E^0x55=43 → DCS-N[42]=D251
 - VFO Record with decoded values
 - CALL IDs with decoded digits
 - Settings show Power/Bandwidth/Descramble
+- **Status**: Complete
+
+### 3. 010 Editor Templates (in `010 Editor Templates/`)
+
+**kg_s88g.bt**:
+- Complete template with all features
+- Frequency decoding (displays as "XXX.YYYYY MHz")
+- Channel name and CALL ID decoding
+- CTCSS/DCS tone decoding
+- Channel settings with Descramble display
+- VFO Record
+- Color-coded sections
 - **Status**: Complete
 
 ## Files Provided by User
@@ -263,10 +275,16 @@ Determine where Kill, Stun, Monitor, Inspection, and Free DTMF codes are stored 
 All code files are in the project root:
 - `kg_s88g_channel_encoder.py` - Channel name encoding/decoding
 - `kg_s88g_freq_encoder.py` - Full channel read/write with CSV import/export
-- `ImHex Patterns/kg_s88g.hexpat` - Main ImHex pattern
-- `ImHex Patterns/kg_s88g_simple.hexpat` - Simplified pattern
-- `ImHex Patterns/kg_s88g_channels.hexpat` - Channel-focused pattern
-- `ImHex Patterns/IMHEX_README.md` - ImHex usage documentation
+
+ImHex Patterns (in `ImHex Patterns/`):
+- `kg_s88g.hexpat` - Main ImHex pattern
+- `kg_s88g_simple.hexpat` - Simplified pattern
+- `kg_s88g_channels.hexpat` - Channel-focused pattern
+- `IMHEX_README.md` - ImHex usage documentation
+
+010 Editor Templates (in `010 Editor Templates/`):
+- `kg_s88g.bt` - Main 010 Editor template
+- `README.md` - 010 Editor usage documentation
 
 Test files are in `Test Saves/` folder.
 
