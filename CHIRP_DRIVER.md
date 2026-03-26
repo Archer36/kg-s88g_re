@@ -6,7 +6,7 @@ Developer notes for the Wouxun KG-S88G CHIRP driver.
 
 ## File Location
 
-https://github.com/Archer36/chirp/blob/wouxun-kg-s88g/chirp/drivers/kg_s88g.py
+https://github.com/Archer36/chirp/blob/wouxun-kg-s88g/chirp/drivers/kgs88g.py
 
 ---
 
@@ -217,7 +217,7 @@ be committed as `tests/images/Wouxun_KG-S88G.img` for the CHIRP test suite.
 
 ## Debugging Tips
 
-- Set `logging.DEBUG` level for `chirp.drivers.kg_s88g` to see handshake bytes,
+- Set `logging.DEBUG` level for `chirp.drivers.kgs88g` to see handshake bytes,
   cipher key, and per-block address progress.
 - The CHIRP driver deliberately uses `data_phase_key = 0x00` (all-zero key material)
   so captured sessions are trivially decryptable — XOR with 0x00 is a no-op for

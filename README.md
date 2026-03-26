@@ -70,7 +70,7 @@ Three patterns for parsing CPS `.dat` files in ImHex. See `ImHex Patterns/IMHEX_
 Template for parsing CPS `.dat` files in 010 Editor. See `010 Editor Templates/README.md`.
 
 ### CHIRP Driver
-[`chirp/drivers/kg_s88g.py`](https://github.com/Archer36/chirp/blob/wouxun-kg-s88g/chirp/drivers/kg_s88g.py) in a fork of the CHIRP repository. Supports full read/write,
+[`chirp/drivers/kgs88g.py`](https://github.com/Archer36/chirp/blob/wouxun-kg-s88g/chirp/drivers/kgs88g.py) in a fork of the CHIRP repository. Supports full read/write,
 all settings, and per-channel extras (Busy Lock, Favorite, Call ID, SP Mute, Descramble).
 
 ---
