@@ -1,5 +1,16 @@
 # KG-S88G Radio Configuration File Format - Reverse Engineering Summary
 
+> **Note**: This file documents the CPS `.dat` file format. See the following files
+> for more complete and up-to-date documentation:
+>
+> - `CPS_FORMAT.md` — CPS `.dat` format (planned rename/refactor of this file)
+> - `EEPROM_FORMAT.md` — Raw radio EEPROM format (accessed over USB)
+> - `PROTOCOL.md` — USB programming protocol
+> - `PCAP_ANALYSIS.md` — How serial bytes were extracted from captures
+> - `TONE_ENCODING.md` — CTCSS/DCS encoding reference (supersedes `DCS_MAPPING_TODO.md`)
+> - `RADIO_SETTINGS_REFERENCE.md` — Side-by-side CPS/EEPROM offset lookup table
+> - `CHIRP_DRIVER.md` — CHIRP driver developer notes
+
 ## Project Overview
 Reverse engineering the Wouxun KG-S88G ham radio .dat configuration file format to enable programmatic editing without the vendor software.
 
